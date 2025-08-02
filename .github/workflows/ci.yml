@@ -1,0 +1,246 @@
+name: K6 Runner CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: k6-runner
+
+jobs:
+  version:
+    name: Generate Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Generate semantic version
+      id: version
+      run: |
+        # Get the latest tag
+        LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+        echo "Latest tag: $LATEST_TAG"
+        
+        # Extract version numbers
+        MAJOR=$(echo $LATEST_TAG | sed 's/v//' | cut -d. -f1)
+        MINOR=$(echo $LATEST_TAG | sed 's/v//' | cut -d. -f2)
+        PATCH=$(echo $LATEST_TAG | sed 's/v//' | cut -d. -f3)
+        
+        # Determine version bump based on commit messages since last tag
+        COMMITS_SINCE_TAG=$(git rev-list ${LATEST_TAG}..HEAD --count 2>/dev/null || git rev-list HEAD --count)
+        
+        if [ "$COMMITS_SINCE_TAG" -eq 0 ] && [ "${{ github.event_name }}" == "push" ] && [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          # This is a tag push, use the tag version
+          VERSION=${LATEST_TAG#v}
+          TAG=$LATEST_TAG
+        else
+          # Check for breaking changes or features
+          COMMIT_MESSAGES=$(git log ${LATEST_TAG}..HEAD --pretty=format:"%s" 2>/dev/null || git log --pretty=format:"%s")
+          
+          if echo "$COMMIT_MESSAGES" | grep -q "BREAKING CHANGE\|!:"; then
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+          elif echo "$COMMIT_MESSAGES" | grep -qE "^feat(\(.+\))?:"; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          else
+            PATCH=$((PATCH + 1))
+          fi
+          
+          # Add build number for non-main branches
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            VERSION="${MAJOR}.${MINOR}.${PATCH}-${GITHUB_REF_NAME}.${GITHUB_RUN_NUMBER}"
+            TAG="v${VERSION}"
+          else
+            VERSION="${MAJOR}.${MINOR}.${PATCH}"
+            TAG="v${VERSION}"
+          fi
+        fi
+        
+        echo "Generated version: $VERSION"
+        echo "Generated tag: $TAG"
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+  build:
+    name: Build and Push
+    runs-on: ubuntu-latest
+    needs: [version]
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=raw,value=${{ needs.version.outputs.version }}
+          type=raw,value=latest,enable={{is_default_branch}}
+        labels: |
+          org.opencontainers.image.title=K6 Load Testing Runner
+          org.opencontainers.image.description=Professional K6 load testing container with HTML reports and web dashboard
+          org.opencontainers.image.version=${{ needs.version.outputs.version }}
+
+    - name: Build and push
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          VERSION=${{ needs.version.outputs.version }}
+          BUILD_DATE=${{ github.run_number }}
+          GIT_COMMIT=${{ github.sha }}
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+    - name: Run Grype vulnerability scanner
+      uses: anchore/scan-action@v3
+      id: grype
+      with:
+        image: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}
+        fail-build: false
+
+    - name: Upload Grype scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: ${{ steps.grype.outputs.sarif }}
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [version, build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Get commits since last tag
+        LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+        if [ -z "$LAST_TAG" ]; then
+          COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges)
+        else
+          COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges ${LAST_TAG}..HEAD)
+        fi
+        
+        # Create changelog
+        {
+          echo "## K6 Runner ${{ needs.version.outputs.tag }}"
+          echo ""
+          echo "Professional K6 load testing container with HTML reports and real-time web dashboard support."
+          echo ""
+          echo "### Changes"
+          echo "$COMMITS"
+          echo ""
+          echo "### Features"
+          echo "- 📊 **Professional HTML Reports** - High-quality test reports with charts and metrics"
+          echo "- 🌐 **Real-time Web Dashboard** - Live monitoring during test execution"
+          echo "- 🚀 **Multi-platform Support** - Works on AMD64 and ARM64 architectures"
+          echo "- 📁 **Volume Support** - Easy mounting of test scripts and report output"
+          echo "- 🔧 **Configurable** - Environment-based configuration for different projects"
+          echo ""
+          echo "### Container Images"
+          echo "- \`ghcr.io/${{ github.repository_owner }}/k6-runner:${{ needs.version.outputs.version }}\`"
+          echo "- \`ghcr.io/${{ github.repository_owner }}/k6-runner:latest\`"
+          echo ""
+          echo "### Usage"
+          echo "\`\`\`bash"
+          echo "# Pull the image"
+          echo "docker pull ghcr.io/${{ github.repository_owner }}/k6-runner:${{ needs.version.outputs.version }}"
+          echo ""
+          echo "# Run with web dashboard"
+          echo "docker run -p 5665:5665 \\"
+          echo "  -v \$(pwd)/tests:/scripts:ro \\"
+          echo "  -v \$(pwd)/reports:/reports \\"
+          echo "  -e BASE_URL=http://your-api:8080 \\"
+          echo "  ghcr.io/${{ github.repository_owner }}/k6-runner:${{ needs.version.outputs.version }}"
+          echo "\`\`\`"
+          echo ""
+          echo "### Docker Compose Integration"
+          echo "\`\`\`yaml"
+          echo "services:"
+          echo "  k6-runner:"
+          echo "    image: ghcr.io/${{ github.repository_owner }}/k6-runner:${{ needs.version.outputs.version }}"
+          echo "    ports:"
+          echo "      - \"5665:5665\"  # Web dashboard"
+          echo "    volumes:"
+          echo "      - ./tests:/scripts:ro"
+          echo "      - ./reports:/reports"
+          echo "      - ./output:/output"
+          echo "    environment:"
+          echo "      - BASE_URL=http://your-api:8080"
+          echo "      - PROJECT_NAME=your-project"
+          echo "\`\`\`"
+        } > CHANGELOG.md
+        
+        # Set output for release
+        {
+          echo "changelog<<EOF"
+          cat CHANGELOG.md
+          echo "EOF"
+        } >> $GITHUB_OUTPUT
+
+    - name: Create Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ needs.version.outputs.tag }}
+        release_name: K6 Runner ${{ needs.version.outputs.tag }}
+        body: ${{ steps.changelog.outputs.changelog }}
+        draft: false
+        prerelease: false

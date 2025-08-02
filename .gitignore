@@ -1,0 +1,81 @@
+# K6 Runner - Git Ignore File
+
+# Reports and output directories
+reports/
+output/
+test-reports/
+test-output/
+
+# Log files
+*.log
+logs/
+
+# Docker build artifacts
+.docker/
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+temp/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node.js (for HTML reporter)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build artifacts
+dist/
+build/
+
+# Test artifacts
+coverage/
+*.cover
+.coverage
+.pytest_cache/
+
+# Security scan results
+trivy-results.sarif
+security-scan-results/
+
+# Backup files
+*.bak
+*.backup
+
+# Archive files
+*.tar
+*.tar.gz
+*.zip
+*.rar
+
+# K6 specific outputs (in case they end up in repo)
+k6-results.json
+summary.json
+dashboard.html
+
+# Development containers
+.devcontainer/

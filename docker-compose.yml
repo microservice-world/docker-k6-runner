@@ -1,0 +1,97 @@
+version: '3.8'
+
+# K6 Runner Development and Testing Environment
+# Use this for local development and testing of the K6 Runner container
+
+services:
+  # K6 Runner Container - Development Build
+  k6-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # Mount example scripts and reports
+      - ./examples:/scripts:ro
+      - ./reports:/reports
+      - ./config:/config:ro
+      - ./output:/output
+    environment:
+      - BASE_URL=http://test-api:8080
+      - PROJECT_NAME=k6-runner-dev
+      - TEST_ENVIRONMENT=development
+      - REPORTS_DIR=/reports
+      - OUTPUT_DIR=/output
+      - CONFIG_DIR=/config
+    networks:
+      - k6-test-network
+    profiles:
+      - testing
+
+  # Test API for K6 Runner Testing
+  test-api:
+    image: kennethreitz/httpbin
+    ports:
+      - "8080:80"
+    networks:
+      - k6-test-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/get"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - testing
+
+  # Sample Application for Integration Testing
+  sample-app:
+    image: nginx:alpine
+    ports:
+      - "8081:80"
+    volumes:
+      - ./examples/sample-app:/usr/share/nginx/html:ro
+    networks:
+      - k6-test-network
+    profiles:
+      - testing
+
+  # K6 Web Dashboard (standalone)
+  k6-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["dashboard", "--port", "5665"]
+    ports:
+      - "5665:5665"
+    volumes:
+      - ./reports:/reports:ro
+      - ./output:/output:ro
+    networks:
+      - k6-test-network
+    profiles:
+      - dashboard
+
+  # Report Server for viewing HTML reports
+  report-server:
+    image: nginx:alpine
+    ports:
+      - "8082:80"
+    volumes:
+      - ./reports:/usr/share/nginx/html:ro
+      - ./config/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - k6-test-network
+    profiles:
+      - reports
+
+volumes:
+  reports:
+    driver: local
+  output:
+    driver: local
+
+networks:
+  k6-test-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16

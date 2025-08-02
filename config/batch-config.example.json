@@ -1,0 +1,115 @@
+{
+  "project": "foundation-tenant-api",
+  "environment": "testing",
+  "baseUrl": "http://foundation-tenant-api:8080",
+  "projectName": "Foundation Tenant API",
+  "description": "Comprehensive test suite for Foundation Tenant API",
+  "maxConcurrentTests": 1,
+  "cleanupAfterTests": true,
+  "reportSettings": {
+    "generateIndex": true,
+    "includeRawData": true,
+    "maxReportAge": 30
+  },
+  "defaultThresholds": {
+    "http_req_duration": ["p(95)<500"],
+    "http_req_failed": ["rate<0.1"],
+    "errors": ["rate<0.05"]
+  },
+  "tests": [
+    {
+      "name": "smoke-test",
+      "description": "Quick validation test",
+      "script": "smoke.js",
+      "enabled": true,
+      "tags": ["smoke", "quick", "validation"],
+      "options": {
+        "vus": 5,
+        "duration": "1m"
+      },
+      "thresholds": {
+        "http_req_duration": ["p(95)<200"],
+        "http_req_failed": ["rate<0.01"]
+      }
+    },
+    {
+      "name": "load-test",
+      "description": "Standard load testing with realistic user patterns",
+      "script": "load-test-comprehensive.js",
+      "enabled": true,
+      "tags": ["load", "performance", "realistic"],
+      "environment": {
+        "VUS_RAMP_UP": "100",
+        "VUS_PEAK": "300",
+        "DURATION_RAMP": "2m",
+        "DURATION_PEAK": "5m"
+      },
+      "dependencies": ["smoke-test"]
+    },
+    {
+      "name": "spike-test",
+      "description": "Traffic spike and resilience testing",
+      "script": "spike-test.js",
+      "enabled": true,
+      "tags": ["spike", "resilience", "stress"],
+      "environment": {
+        "SPIKE_VUS": "1000",
+        "SPIKE_DURATION": "2m"
+      },
+      "dependencies": ["load-test"],
+      "thresholds": {
+        "http_req_duration": ["p(95)<1000"],
+        "http_req_failed": ["rate<0.2"]
+      }
+    },
+    {
+      "name": "soak-test",
+      "description": "Long-duration stability testing",
+      "script": "soak-test.js",
+      "enabled": false,
+      "tags": ["soak", "stability", "endurance"],
+      "environment": {
+        "SOAK_VUS": "100",
+        "SOAK_DURATION": "30m"
+      },
+      "dependencies": ["load-test"],
+      "schedule": {
+        "runOn": ["nightly", "weekly"]
+      }
+    },
+    {
+      "name": "api-comprehensive",
+      "description": "Complete API endpoint testing",
+      "script": "api-test-suite.js",
+      "enabled": true,
+      "tags": ["api", "comprehensive", "endpoints"],
+      "environment": {
+        "TEST_ALL_ENDPOINTS": "true",
+        "INCLUDE_EDGE_CASES": "true"
+      },
+      "dependencies": ["smoke-test"]
+    }
+  ],
+  "notifications": {
+    "onSuccess": {
+      "webhook": "https://hooks.slack.com/services/...",
+      "template": "✅ K6 tests passed for {{project}} in {{environment}}"
+    },
+    "onFailure": {
+      "webhook": "https://hooks.slack.com/services/...",
+      "template": "❌ K6 tests failed for {{project}} in {{environment}}"
+    }
+  },
+  "artifacts": {
+    "retention": {
+      "reports": "30d",
+      "rawData": "7d",
+      "logs": "3d"
+    },
+    "storage": {
+      "reports": "/reports",
+      "rawData": "/output",
+      "logs": "/logs"
+    }
+  }
+}
