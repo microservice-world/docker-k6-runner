@@ -154,13 +154,15 @@ jobs:
       with:
         image: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}
         fail-build: false
+        output-format: json
+        output-file: grype-results.json
 
     - name: Upload Grype scan results as artifact
       uses: actions/upload-artifact@v4
       if: always()
       with:
         name: grype-security-scan
-        path: ${{ steps.grype.outputs.json }}
+        path: grype-results.json
         retention-days: 30
 
   release:
