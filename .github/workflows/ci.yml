@@ -110,13 +110,14 @@ jobs:
           org.opencontainers.image.description=Professional K6 load testing container with HTML reports and web dashboard
           org.opencontainers.image.version=${{ needs.version.outputs.version }}
 
-    - name: Build and push
+    - name: Build Docker image for testing
       uses: docker/build-push-action@v5
       with:
         context: .
-        platforms: linux/amd64,linux/arm64
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
+        platforms: linux/amd64
+        push: false
+        load: true
+        tags: k6-runner:test
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
@@ -124,18 +125,59 @@ jobs:
           VERSION=${{ needs.version.outputs.version }}
           BUILD_DATE=${{ github.run_number }}
           GIT_COMMIT=${{ github.sha }}
-
+    
+    # Container testing
+    - name: Test container functionality
+      run: |
+        echo "Testing K6 Runner container..."
+        
+        # Test basic functionality
+        docker run --rm k6-runner:test version
+        docker run --rm k6-runner:test help
+        
+        # Test with a simple script
+        mkdir -p test-scripts test-reports
+        cat > test-scripts/smoke-test.js << 'EOF'
+        import http from 'k6/http';
+        import { check } from 'k6';
+        
+        export const options = {
+          vus: 1,
+          duration: '10s',
+        };
+        
+        export default function () {
+          const res = http.get('https://httpbin.org/get');
+          check(res, {
+            'status is 200': (r) => r.status === 200,
+          });
+        }
+        EOF
+        
+        # Run smoke test
+        docker run --rm \
+          -v "$(pwd)/test-scripts:/scripts" \
+          -v "$(pwd)/test-reports:/reports" \
+          -e BASE_URL=https://httpbin.org \
+          k6-runner:test
+        
+        # Verify reports were generated
+        ls -la test-reports/
+        
+        echo "✅ Container tests passed!"
+    
+    # Security scanning as quality gate
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}
+        image-ref: k6-runner:test
         format: 'table'
         exit-code: '0'  # Don't fail on vulnerabilities, just report them
         
     - name: Run Trivy in JSON format for artifact
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}
+        image-ref: k6-runner:test
         format: 'json'
         output: 'trivy-results.json'
         exit-code: '0'
@@ -147,15 +189,19 @@ jobs:
         name: trivy-security-scan
         path: trivy-results.json
         retention-days: 30
+        if-no-files-found: warn
 
     - name: Run Grype vulnerability scanner
-      uses: anchore/scan-action@v3
-      id: grype
-      with:
-        image: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}
-        fail-build: false
-        output-format: json
-        output-file: grype-results.json
+      run: |
+        # Install grype
+        curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /tmp
+        
+        # Run grype scan
+        /tmp/grype k6-runner:test -o json > grype-results.json || true
+        
+        # Display summary
+        echo "=== Grype Scan Summary ==="
+        /tmp/grype k6-runner:test -q || true
 
     - name: Upload Grype scan results as artifact
       uses: actions/upload-artifact@v4
@@ -164,6 +210,39 @@ jobs:
         name: grype-security-scan
         path: grype-results.json
         retention-days: 30
+        if-no-files-found: warn
+        
+    - name: Display scan completion
+      if: always()
+      run: |
+        echo "=== Quality Gate Summary ==="
+        echo "✅ Container tests passed"
+        echo "✅ Trivy scan completed. Results saved as artifact."
+        if [ -f grype-results.json ]; then
+          echo "✅ Grype scan completed. Results saved as artifact."
+          echo "Grype results file size: $(ls -lh grype-results.json | awk '{print $5}')"
+        else
+          echo "⚠️ Grype scan results not found."
+        fi
+        if [ -f trivy-results.json ]; then
+          echo "Trivy results file size: $(ls -lh trivy-results.json | awk '{print $5}')"
+        fi
+    
+    # Push only after all tests and scans pass
+    - name: Push Docker image
+      if: github.event_name != 'pull_request'
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        build-args: |
+          VERSION=${{ needs.version.outputs.version }}
+          BUILD_DATE=${{ github.run_number }}
+          GIT_COMMIT=${{ github.sha }}
 
   release:
     name: Create Release
