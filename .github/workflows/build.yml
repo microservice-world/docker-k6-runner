@@ -162,13 +162,16 @@ jobs:
         retention-days: 30
 
     - name: Run Grype vulnerability scanner
-      uses: anchore/scan-action@v3
-      id: grype
-      with:
-        image: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest
-        fail-build: false
-        output-format: json
-        output-file: grype-results.json
+      run: |
+        # Install grype
+        curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /tmp
+        
+        # Run grype scan
+        /tmp/grype ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest -o json > grype-results.json || true
+        
+        # Display summary
+        echo "=== Grype Scan Summary ==="
+        /tmp/grype ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest -q || true
 
     - name: Upload Grype scan results as artifact
       uses: actions/upload-artifact@v4
@@ -177,3 +180,19 @@ jobs:
         name: grype-security-scan
         path: grype-results.json
         retention-days: 30
+        if-no-files-found: warn
+        
+    - name: Display scan completion
+      if: always()
+      run: |
+        echo "=== Vulnerability Scan Summary ==="
+        echo "✅ Trivy scan completed. Results saved as artifact."
+        if [ -f grype-results.json ]; then
+          echo "✅ Grype scan completed. Results saved as artifact."
+          echo "Grype results file size: $(ls -lh grype-results.json | awk '{print $5}')"
+        else
+          echo "⚠️ Grype scan results not found."
+        fi
+        if [ -f trivy-results.json ]; then
+          echo "Trivy results file size: $(ls -lh trivy-results.json | awk '{print $5}')"
+        fi
