@@ -60,7 +60,9 @@ jobs:
           
           # Add build number for non-main branches
           if [ "${{ github.ref_name }}" != "main" ]; then
-            VERSION="${MAJOR}.${MINOR}.${PATCH}-${GITHUB_REF_NAME}.${GITHUB_RUN_NUMBER}"
+            # Sanitize branch name for Docker tag (replace invalid characters)
+            SANITIZED_BRANCH=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+            VERSION="${MAJOR}.${MINOR}.${PATCH}-${SANITIZED_BRANCH}.${GITHUB_RUN_NUMBER}"
             TAG="v${VERSION}"
           else
             VERSION="${MAJOR}.${MINOR}.${PATCH}"
