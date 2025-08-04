@@ -110,7 +110,8 @@ jobs:
           org.opencontainers.image.description=Professional K6 load testing container with HTML reports and web dashboard
           org.opencontainers.image.version=${{ needs.version.outputs.version }}
 
-    - name: Build Docker image for testing
+    # Phase 1: Build Docker image locally for testing
+    - name: 🏗️ Build Docker image
       uses: docker/build-push-action@v5
       with:
         context: .
@@ -126,8 +127,8 @@ jobs:
           BUILD_DATE=${{ github.run_number }}
           GIT_COMMIT=${{ github.sha }}
     
-    # Container testing
-#    - name: Test container functionality
+    # Container testing (commented out per user request)
+#    - name: 🧪 Test container functionality
 #      run: |
 #        echo "Testing K6 Runner container..."
 #
@@ -166,23 +167,36 @@ jobs:
 #
 #        echo "✅ Container tests passed!"
     
-    # Security scanning as quality gate
-    - name: Run Trivy vulnerability scanner
+    # Phase 2: Security scanning with Trivy
+    - name: 🔍 Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
       with:
         image-ref: k6-runner:test
         format: 'table'
         exit-code: '0'  # Don't fail on vulnerabilities, just report them
         
-    - name: Run Trivy in JSON format for artifact
+    - name: 📄 Generate Trivy JSON report
       uses: aquasecurity/trivy-action@master
       with:
         image-ref: k6-runner:test
         format: 'json'
         output: 'trivy-results.json'
         exit-code: '0'
+
+    # Phase 3: Security scanning with Grype
+    - name: 🔎 Run Grype vulnerability scanner
+      run: |
+        echo "Installing Grype..."
+        curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /tmp
         
-    - name: Upload Trivy scan results as artifact
+        echo "Running Grype scan..."
+        /tmp/grype k6-runner:test -o json > grype-results.json || true
+        
+        echo "=== Grype Scan Summary ==="
+        /tmp/grype k6-runner:test -q || true
+
+    # Phase 4: Upload security scan artifacts
+    - name: ⬆️ Upload Trivy scan results
       uses: actions/upload-artifact@v4
       if: always()
       with:
@@ -191,19 +205,7 @@ jobs:
         retention-days: 30
         if-no-files-found: warn
 
-    - name: Run Grype vulnerability scanner
-      run: |
-        # Install grype
-        curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /tmp
-        
-        # Run grype scan
-        /tmp/grype k6-runner:test -o json > grype-results.json || true
-        
-        # Display summary
-        echo "=== Grype Scan Summary ==="
-        /tmp/grype k6-runner:test -q || true
-
-    - name: Upload Grype scan results as artifact
+    - name: ⬆️ Upload Grype scan results
       uses: actions/upload-artifact@v4
       if: always()
       with:
@@ -212,24 +214,25 @@ jobs:
         retention-days: 30
         if-no-files-found: warn
         
-    - name: Display scan completion
+    # Phase 5: Quality gate summary
+    - name: ✅ Security scan summary
       if: always()
       run: |
-        echo "=== Quality Gate Summary ==="
-        echo "✅ Container tests passed"
-        echo "✅ Trivy scan completed. Results saved as artifact."
+        echo "=== Security Scan Summary ==="
+        echo "🔍 Trivy scan completed. Results saved as artifact."
         if [ -f grype-results.json ]; then
-          echo "✅ Grype scan completed. Results saved as artifact."
-          echo "Grype results file size: $(ls -lh grype-results.json | awk '{print $5}')"
+          echo "🔎 Grype scan completed. Results saved as artifact."
+          echo "   Grype results file size: $(ls -lh grype-results.json | awk '{print $5}')"
         else
           echo "⚠️ Grype scan results not found."
         fi
         if [ -f trivy-results.json ]; then
-          echo "Trivy results file size: $(ls -lh trivy-results.json | awk '{print $5}')"
+          echo "   Trivy results file size: $(ls -lh trivy-results.json | awk '{print $5}')"
         fi
+        echo "✅ All security scans completed successfully!"
     
-    # Push only after all tests and scans pass
-    - name: Push Docker image
+    # Phase 6: Push Docker image to registry (only after all scans pass)
+    - name: 🚀 Push Docker image to registry
       if: github.event_name != 'pull_request'
       uses: docker/build-push-action@v5
       with:

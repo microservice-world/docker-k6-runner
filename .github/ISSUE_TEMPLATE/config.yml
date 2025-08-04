@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a Question
+    url: https://github.com/your-org/k6-runner/discussions/new?category=q-a
+    about: Ask questions and discuss with other community members
+  - name: Documentation
+    url: https://github.com/your-org/k6-runner/wiki
+    about: Check our documentation for usage guides and examples
+  - name: K6 Documentation
+    url: https://k6.io/docs/
+    about: Official K6 documentation for test script writing
