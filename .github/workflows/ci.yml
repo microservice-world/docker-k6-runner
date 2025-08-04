@@ -218,6 +218,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
 
     steps:
     - name: Checkout
@@ -249,6 +251,7 @@ jobs:
           org.opencontainers.image.version=${{ needs.version.outputs.version }}
 
     - name: Push Docker image to registry
+      id: push
       uses: docker/build-push-action@v5
       with:
         context: .
@@ -261,6 +264,13 @@ jobs:
           VERSION=${{ needs.version.outputs.version }}
           BUILD_DATE=${{ github.run_number }}
           GIT_COMMIT=${{ github.sha }}
+
+    - name: Attest build provenance
+      uses: actions/attest-build-provenance@v1
+      with:
+        subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+        subject-digest: ${{ steps.push.outputs.digest }}
+        push-to-registry: true
 
   release:
     name: Create Release
