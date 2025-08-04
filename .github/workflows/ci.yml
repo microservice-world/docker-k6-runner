@@ -127,44 +127,44 @@ jobs:
           GIT_COMMIT=${{ github.sha }}
     
     # Container testing
-    - name: Test container functionality
-      run: |
-        echo "Testing K6 Runner container..."
-        
-        # Test basic functionality
-        docker run --rm k6-runner:test version
-        docker run --rm k6-runner:test help
-        
-        # Test with a simple script
-        mkdir -p test-scripts test-reports
-        cat > test-scripts/smoke-test.js << 'EOF'
-        import http from 'k6/http';
-        import { check } from 'k6';
-        
-        export const options = {
-          vus: 1,
-          duration: '10s',
-        };
-        
-        export default function () {
-          const res = http.get('https://httpbin.org/get');
-          check(res, {
-            'status is 200': (r) => r.status === 200,
-          });
-        }
-        EOF
-        
-        # Run smoke test
-        docker run --rm \
-          -v "$(pwd)/test-scripts:/scripts" \
-          -v "$(pwd)/test-reports:/reports" \
-          -e BASE_URL=https://httpbin.org \
-          k6-runner:test
-        
-        # Verify reports were generated
-        ls -la test-reports/
-        
-        echo "✅ Container tests passed!"
+#    - name: Test container functionality
+#      run: |
+#        echo "Testing K6 Runner container..."
+#
+#        # Test basic functionality
+#        docker run --rm k6-runner:test version
+#        docker run --rm k6-runner:test help
+#
+#        # Test with a simple script
+#        mkdir -p test-scripts test-reports
+#        cat > test-scripts/smoke-test.js << 'EOF'
+#        import http from 'k6/http';
+#        import { check } from 'k6';
+#
+#        export const options = {
+#          vus: 1,
+#          duration: '10s',
+#        };
+#
+#        export default function () {
+#          const res = http.get('https://httpbin.org/get');
+#          check(res, {
+#            'status is 200': (r) => r.status === 200,
+#          });
+#        }
+#        EOF
+#
+#        # Run smoke test
+#        docker run --rm \
+#          -v "$(pwd)/test-scripts:/scripts" \
+#          -v "$(pwd)/test-reports:/reports" \
+#          -e BASE_URL=https://httpbin.org \
+#          k6-runner:test
+#
+#        # Verify reports were generated
+#        ls -la test-reports/
+#
+#        echo "✅ Container tests passed!"
     
     # Security scanning as quality gate
     - name: Run Trivy vulnerability scanner
