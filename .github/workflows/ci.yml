@@ -355,12 +355,10 @@ jobs:
         } >> $GITHUB_OUTPUT
 
     - name: Create Release
-      uses: actions/create-release@v1
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ needs.version.outputs.tag }}
-        release_name: K6 Runner ${{ needs.version.outputs.tag }}
-        body: ${{ steps.changelog.outputs.changelog }}
-        draft: false
-        prerelease: false
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        gh release create "${{ needs.version.outputs.tag }}" \
+          --title "K6 Runner ${{ needs.version.outputs.tag }}" \
+          --notes-file CHANGELOG.md \
+          --latest
