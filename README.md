@@ -4,14 +4,14 @@ A production-ready Docker container for running K6 load tests with comprehensive
 
 ## Features
 
-- 🚀 **K6 with Extensions** - Built with popular xk6 extensions for enhanced functionality
-- 📊 **Professional HTML Reports** - Automatic generation of detailed HTML reports
-- 🔧 **Multi-Project Support** - Configurable for different applications and environments  
-- 📈 **Multiple Output Formats** - JSON, HTML, CSV, and Prometheus outputs
-- 🌐 **Web Dashboard** - Built-in K6 web dashboard support
-- 🧹 **Cleanup Tools** - Automated cleanup of old reports and temporary files
-- 🔒 **Security-First** - Runs as non-root user with minimal attack surface
-- 📦 **Multi-Platform** - Supports both AMD64 and ARM64 architectures
+- **K6 with Extensions** - Built with popular xk6 extensions for enhanced functionality
+- **Professional HTML Reports** - Automatic generation of detailed HTML reports
+- **Multi-Project Support** - Configurable for different applications and environments  
+- **Multiple Output Formats** - JSON, HTML, CSV, and Prometheus outputs
+- **Web Dashboard** - Built-in K6 web dashboard support
+- **Cleanup Tools** - Automated cleanup of old reports and temporary files
+- **Security-First** - Runs as non-root user with minimal attack surface
+- **Multi-Platform** - Supports both AMD64 and ARM64 architectures
 
 ## Quick Start
 
@@ -326,7 +326,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Support
 
-- 📖 [Documentation](https://github.com/your-org/k6-runner/wiki)
 - 🐛 [Issues](https://github.com/your-org/k6-runner/issues)
 - 💬 [Discussions](https://github.com/your-org/k6-runner/discussions)
 
